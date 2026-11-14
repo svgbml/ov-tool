@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>OV-tool – storingen & vertragingen</title>
+  <meta name="description" content="Houd je vaste treintrajecten in de gaten: vertragingen, uitval, storingen en een alternatief.">
+  <meta name="theme-color" content="#1d3a8a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="" width="28" height="28">
+      <span>OV-tool</span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="live" role="tab">Live</button>
+      <button class="tab" data-tab="trajecten" role="tab">Trajecten</button>
+      <button class="tab" data-tab="instellingen" role="tab">Instellingen</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- LIVE -->
+    <section id="tab-live" class="panel active">
+      <div class="panel-head">
+        <div>
+          <h1>Live status</h1>
+          <p class="muted" id="last-update">Nog niet bijgewerkt</p>
+        </div>
+        <button class="btn" id="btn-refresh">Vernieuwen</button>
+      </div>
+      <div id="nokey-banner" class="banner hidden">
+        Geen NS API-sleutel ingesteld. Ga naar <a href="#" data-goto="instellingen">Instellingen</a> om er een in te voeren.
+      </div>
+      <div id="live-list" class="cards"></div>
+    </section>
+
+    <!-- TRAJECTEN -->
+    <section id="tab-trajecten" class="panel">
+      <div class="panel-head">
+        <h1>Trajecten</h1>
+        <button class="btn primary" id="btn-new">+ Nieuw traject</button>
+      </div>
+      <div id="traject-list" class="list"></div>
+
+      <form id="traject-form" class="card form hidden" autocomplete="off">
+        <h2 id="form-title">Nieuw traject</h2>
+        <input type="hidden" name="id">
+        <label>Naam
+          <input name="naam" placeholder="bijv. Naar Avans" required>
+        </label>
+        <div class="grid2">
+          <label>Van (station)
+            <input name="van" list="stations" placeholder="Tilburg (TB)" required>
+          </label>
+          <label>Naar (station)
+            <input name="naar" list="stations" placeholder="Breda (BD)" required>
+          </label>
+        </div>
+        <datalist id="stations"></datalist>
+        <p class="hint">Typ een stationsnaam (met API-sleutel verschijnen suggesties) of de NS-code, bijv. <code>TB</code>, <code>BD</code>.</p>
+        <fieldset class="days">
+          <legend>Dagen</legend>
+          <div id="day-boxes"></div>
+        </fieldset>
+        <div class="grid3">
+          <label>Vanaf
+            <input type="time" name="start" required>
+          </label>
+          <label>Tot
+            <input type="time" name="eind" required>
+          </label>
+          <label>Melden vanaf (min vertraging)
+            <input type="number" name="drempel" min="1" max="60" required>
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" name="actief"> Actief</label>
+        <div class="form-actions">
+          <button type="button" class="btn" id="btn-cancel">Annuleren</button>
+          <button type="submit" class="btn primary">Opslaan</button>
+        </div>
+      </form>
+
+      <div class="card subtle">
+        <h2>Back-up</h2>
+        <p class="muted">Exporteer je trajecten als JSON (ook bruikbaar voor de latere achtergrond-checker), of importeer ze op een ander apparaat.</p>
+        <div class="row">
+          <button class="btn" id="btn-export">Exporteren</button>
+          <label class="btn file">Importeren<input type="file" id="file-import" accept="application/json,.json" hidden></label>
+          <button class="btn danger-ghost" id="btn-reset">Standaard herstellen</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSTELLINGEN -->
+    <section id="tab-instellingen" class="panel">
+      <h1>Instellingen</h1>
+      <form id="settings-form" class="card form" autocomplete="off">
+        <label>NS API-sleutel (Reisinformatie API / Ns-App)
+          <div class="row">
+            <input type="password" name="apiKey" placeholder="Primary key uit het NS API-portaal" spellcheck="false">
+            <button type="button" class="btn" id="btn-showkey">Toon</button>
+          </div>
+        </label>
+        <p class="hint">Aanvragen: maak een account op <a href="https://apiportal.ns.nl/" target="_blank" rel="noopener">apiportal.ns.nl</a>, abonneer je op het product <strong>Ns-App</strong> en kopieer de primary key. De sleutel blijft alleen in deze browser.</p>
+        <div class="grid2">
+          <label>Automatisch vernieuwen
+            <select name="refreshSec">
+              <option value="0">Uit</option>
+              <option value="60">Elke minuut</option>
+              <option value="120">Elke 2 minuten</option>
+              <option value="300">Elke 5 minuten</option>
+            </select>
+          </label>
+          <label>Aantal treinen per traject
+            <select name="aantal">
+              <option>3</option><option>4</option><option>5</option><option>6</option>
+            </select>
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" name="notify"> Browsermelding bij vertraging, uitval of storing (zolang de app open staat)</label>
+        <div class="form-actions">
+          <button type="button" class="btn" id="btn-test">Sleutel testen</button>
+          <button type="submit" class="btn primary">Opslaan</button>
+        </div>
+        <p id="settings-msg" class="hint"></p>
+      </form>
+      <p class="muted small">Data: NS Reisinformatie API &amp; Disruptions API. Deze app is niet van NS.</p>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
