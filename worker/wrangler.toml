@@ -1,0 +1,21 @@
+name = "ov-tool"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[triggers]
+crons = ["* * * * *"]
+
+[[kv_namespaces]]
+binding = "KV"
+id = "KV_ID_PLACEHOLDER"
+
+[vars]
+VAPID_PUBLIC = "BKJPnrwUe5kv6We1L9oCL2s0_Xucp-gwqwNXfyJeqmhrq6KoX2BKr86z6E9Hk0OhdLdp10lokv0HSmEVLlMkXhA"
+VAPID_SUBJECT = "https://github.com/svgbml/ov-tool"
+
+[observability]
+enabled = true

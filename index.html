@@ -124,7 +124,18 @@
         <div class="section">
           <h2 class="section-title">Meldingen</h2>
           <div class="group">
-            <label class="row-item"><span><b>Melding bij vertraging, uitval of storing</b><small>Werkt zolang de app open staat</small></span>
+            <div class="push-box">
+              <div class="push-head">
+                <span class="push-dot" id="push-dot"></span>
+                <div><b id="push-title">Pushmeldingen staan uit</b><small id="push-sub">Krijg een melding bij vertraging, uitval of storing, ook als de app dicht is. Er wordt elke minuut gecontroleerd binnen je tijdvensters.</small></div>
+              </div>
+              <div class="push-actions">
+                <button type="button" class="btn primary" id="btn-push-on">Pushmeldingen aanzetten</button>
+                <button type="button" class="btn secondary hidden" id="btn-push-test">Testmelding</button>
+                <button type="button" class="btn ghost hidden" id="btn-push-off">Uitzetten</button>
+              </div>
+            </div>
+            <label class="row-item" id="row-local-notify"><span><b>Melding terwijl de app open is</b><small>Zonder push, alleen zolang de app open staat</small></span>
               <input type="checkbox" name="notify" class="switch">
             </label>
           </div>

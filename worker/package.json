@@ -1,0 +1,15 @@
+{
+  "name": "ov-tool-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && wrangler dev --test-scheduled",
+    "deploy": "node build.mjs && wrangler deploy",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "http_ece": "^1.2.0",
+    "wrangler": "^4.0.0"
+  }
+}

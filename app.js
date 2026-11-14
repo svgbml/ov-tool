@@ -5,6 +5,9 @@
 
 const API_BASE = 'https://gateway.apiportal.ns.nl';
 const STORE_KEY = 'ovtool.v1';
+// Cloudflare Worker die op de achtergrond controleert en pushmeldingen stuurt.
+const WORKER_ORIGIN = 'https://ov-tool.__CF_SUBDOMAIN__.workers.dev';
+const WORKER_API = /\.workers\.dev$|^localhost$|^127\./.test(location.hostname) ? location.origin : WORKER_ORIGIN;
 const DAGEN = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'];
 const DAG_VOLGORDE = [1, 2, 3, 4, 5, 6, 0];
 
@@ -38,9 +41,12 @@ function defaultTrajecten() {
   ];
 }
 function defaultState() {
-  return { apiKey: '', settings: { refreshSec: 120, aantal: 4, notify: false, theme: 'minimal', mode: 'auto' }, trajecten: defaultTrajecten() };
+  return { apiKey: '', deviceId: newDeviceId(), push: { enabled: false, synced: '' }, settings: { refreshSec: 120, aantal: 4, notify: false, theme: 'minimal', mode: 'auto' }, trajecten: defaultTrajecten() };
 }
 
+function newDeviceId() {
+  return (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`);
+}
 let memoryFallback = null;
 function loadState() {
   try {
@@ -48,7 +54,7 @@ function loadState() {
     if (!raw) return defaultState();
     const s = JSON.parse(raw);
     const d = defaultState();
-    return { ...d, ...s, settings: { ...d.settings, ...(s.settings || {}) }, trajecten: Array.isArray(s.trajecten) ? s.trajecten : d.trajecten };
+    return { ...d, ...s, push: { ...d.push, ...(s.push || {}) }, settings: { ...d.settings, ...(s.settings || {}) }, trajecten: Array.isArray(s.trajecten) ? s.trajecten : d.trajecten };
   } catch {
     return memoryFallback || defaultState();
   }
@@ -56,6 +62,7 @@ function loadState() {
 function saveState() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
   catch { memoryFallback = structuredClone(state); }
+  if (typeof schedulePushSync === 'function') schedulePushSync();
 }
 let state = loadState();
 
@@ -434,7 +441,7 @@ function disruptionRow(d) {
 
 /* ---------- meldingen ---------- */
 async function maybeNotify(t, analysed, onRoute, altKey) {
-  if (!state.settings.notify || !('Notification' in window) || Notification.permission !== 'granted') return;
+  if (state.push.enabled || !state.settings.notify || !('Notification' in window) || Notification.permission !== 'granted') return;
   const binnenUur = analysed.filter((a) => parseDate(a.aDep) - Date.now() < 60 * 60000);
   const alt = analysed.find((a) => a.key === altKey);
   for (const a of binnenUur) {
@@ -675,6 +682,99 @@ $('#btn-test').addEventListener('click', async () => {
   }
 });
 
+
+
+/* ---------- PUSHMELDINGEN (via Worker) ---------- */
+const pushConfigured = () => !WORKER_API.includes('__');
+const pushSupported = () => pushConfigured() && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+function b64ToU8(b64) {
+  const s = b64.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(s + '='.repeat((4 - (s.length % 4)) % 4));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+async function apiCall(path, body) {
+  const res = await fetch(`${WORKER_API}/api${path}`, body
+    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    : {});
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Server gaf fout ${res.status}`);
+  return data;
+}
+const pushFingerprint = () => JSON.stringify([state.apiKey, state.trajecten]);
+async function registerPush() {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    const { publicKey } = await apiCall('/vapid');
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(publicKey) });
+  }
+  const r = await apiCall('/register', { id: state.deviceId, subscription: sub.toJSON(), apiKey: state.apiKey, trajecten: state.trajecten });
+  state.push.synced = pushFingerprint();
+  return r;
+}
+let pushSyncT;
+function schedulePushSync() {
+  if (!state.push?.enabled) return;
+  clearTimeout(pushSyncT);
+  pushSyncT = setTimeout(async () => {
+    if (state.push.synced === pushFingerprint()) return;
+    try { await registerPush(); localStorage.setItem(STORE_KEY, JSON.stringify(state)); renderPush(); }
+    catch (e) { renderPush(e.message); }
+  }, 1500);
+}
+function renderPush(error) {
+  const on = !!state.push.enabled;
+  const dot = $('#push-dot');
+  dot.className = `push-dot${error ? ' err' : on ? ' on' : ''}`;
+  const actief = state.trajecten.filter((t) => t.actief).length;
+  $('#push-title').textContent = error ? 'Pushmeldingen: probleem' : on ? 'Pushmeldingen staan aan' : 'Pushmeldingen staan uit';
+  $('#push-sub').textContent = error ? error
+    : !pushConfigured() ? 'De meldingsserver wordt nog ingericht.'
+    : !pushSupported() ? 'Deze browser ondersteunt geen pushmeldingen. Gebruik de Android-app of Chrome.'
+    : on ? `Elke minuut wordt gecontroleerd voor ${actief} actief traject${actief === 1 ? '' : 'en'}, ook als de app dicht is.`
+    : 'Krijg een melding bij vertraging, uitval of storing, ook als de app dicht is. Er wordt elke minuut gecontroleerd binnen je tijdvensters.';
+  $('#btn-push-on').classList.toggle('hidden', on);
+  $('#btn-push-on').disabled = !pushSupported();
+  $('#btn-push-test').classList.toggle('hidden', !on);
+  $('#btn-push-off').classList.toggle('hidden', !on);
+  $('#row-local-notify').classList.toggle('hidden', on);
+}
+$('#btn-push-on').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (!state.apiKey) { toast('Vul en bewaar eerst je NS API-sleutel'); return; }
+  btn.disabled = true;
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('Meldingen zijn niet toegestaan. Sta ze toe in de instellingen van je telefoon.');
+    await registerPush();
+    state.push.enabled = true;
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    renderPush();
+    await apiCall('/test', { id: state.deviceId }).catch(() => {});
+    toast('Pushmeldingen staan aan');
+  } catch (err) {
+    renderPush(err.name === 'NotAllowedError' || /permission/i.test(err.message)
+      ? 'Meldingen zijn geblokkeerd. Sta meldingen voor OV-tool toe in de instellingen van je telefoon en probeer opnieuw.'
+      : err.name === 'TypeError' ? 'Kan de meldingsserver niet bereiken. Controleer je internetverbinding.' : err.message);
+  } finally { btn.disabled = false; }
+});
+$('#btn-push-test').addEventListener('click', async () => {
+  try { await apiCall('/test', { id: state.deviceId }); toast('Testmelding verstuurd'); }
+  catch (err) { renderPush(err.message); }
+});
+$('#btn-push-off').addEventListener('click', async () => {
+  try {
+    await apiCall('/unregister', { id: state.deviceId }).catch(() => {});
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    await sub?.unsubscribe();
+  } finally {
+    state.push = { enabled: false, synced: '' };
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    renderPush();
+    toast('Pushmeldingen uitgezet');
+  }
+});
+renderPush();
 
 /* ---------- UITERLIJK ---------- */
 const THEMES = [
