@@ -5,136 +5,181 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>OV-tool – storingen & vertragingen</title>
   <meta name="description" content="Houd je vaste treintrajecten in de gaten: vertragingen, uitval, storingen en een alternatief.">
-  <meta name="theme-color" content="#1d3a8a">
+  <meta name="theme-color" content="#ffc917">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <img src="icons/icon.svg" alt="" width="28" height="28">
-      <span>OV-tool</span>
+  <header class="appbar">
+    <div class="appbar-inner">
+      <a class="brand" href="#" data-goto="live">
+        <img src="icons/icon.svg" alt="" width="34" height="34">
+        <span class="brand-text"><strong>OV-tool</strong><small>Storingen &amp; vertragingen</small></span>
+      </a>
+      <nav class="topnav" aria-label="Hoofdmenu">
+        <button class="nav-btn" data-tab="live"><svg viewBox="0 0 24 24"><use href="#i-train"/></svg><span>Reizen</span></button>
+        <button class="nav-btn" data-tab="trajecten"><svg viewBox="0 0 24 24"><use href="#i-route"/></svg><span>Trajecten</span></button>
+        <button class="nav-btn" data-tab="instellingen"><svg viewBox="0 0 24 24"><use href="#i-cog"/></svg><span>Instellingen</span></button>
+      </nav>
     </div>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" data-tab="live" role="tab">Live</button>
-      <button class="tab" data-tab="trajecten" role="tab">Trajecten</button>
-      <button class="tab" data-tab="instellingen" role="tab">Instellingen</button>
-    </nav>
   </header>
 
   <main>
-    <!-- LIVE -->
-    <section id="tab-live" class="panel active">
-      <div class="panel-head">
+    <!-- REIZEN -->
+    <section id="tab-live" class="panel">
+      <div class="page-head">
         <div>
-          <h1>Live status</h1>
-          <p class="muted" id="last-update">Nog niet bijgewerkt</p>
+          <h1>Mijn reizen</h1>
+          <p class="sub" id="last-update">Nog niet bijgewerkt</p>
         </div>
-        <button class="btn" id="btn-refresh">Vernieuwen</button>
+        <button class="icon-btn lg" id="btn-refresh" aria-label="Vernieuwen" title="Vernieuwen"><svg viewBox="0 0 24 24"><use href="#i-refresh"/></svg></button>
       </div>
-      <div id="nokey-banner" class="banner hidden">
-        Geen NS API-sleutel ingesteld. Ga naar <a href="#" data-goto="instellingen">Instellingen</a> om er een in te voeren.
+      <div id="nokey-banner" class="notice info hidden">
+        <svg viewBox="0 0 24 24"><use href="#i-info"/></svg>
+        <div><strong>Nog geen NS API-sleutel</strong><p>Voeg je sleutel toe bij <a href="#" data-goto="instellingen">Instellingen</a> om live reisinformatie te zien.</p></div>
       </div>
-      <div id="live-list" class="cards"></div>
+      <div id="live-list" class="stack"></div>
     </section>
 
     <!-- TRAJECTEN -->
     <section id="tab-trajecten" class="panel">
-      <div class="panel-head">
-        <h1>Trajecten</h1>
-        <button class="btn primary" id="btn-new">+ Nieuw traject</button>
+      <div class="page-head">
+        <div>
+          <h1>Trajecten</h1>
+          <p class="sub">Vaste routes die de app voor je bewaakt</p>
+        </div>
+        <button class="btn primary" id="btn-new"><svg viewBox="0 0 24 24"><use href="#i-plus"/></svg>Nieuw traject</button>
       </div>
-      <div id="traject-list" class="list"></div>
+      <div id="traject-list" class="stack"></div>
 
-      <form id="traject-form" class="card form hidden" autocomplete="off">
-        <h2 id="form-title">Nieuw traject</h2>
-        <input type="hidden" name="id">
-        <label>Naam
-          <input name="naam" placeholder="bijv. Naar Avans" required>
-        </label>
-        <div class="grid2">
-          <label>Van (station)
-            <input name="van" list="stations" placeholder="Tilburg (TB)" required>
-          </label>
-          <label>Naar (station)
-            <input name="naar" list="stations" placeholder="Breda (BD)" required>
-          </label>
-        </div>
-        <datalist id="stations"></datalist>
-        <p class="hint">Typ een stationsnaam (met API-sleutel verschijnen suggesties) of de NS-code, bijv. <code>TB</code>, <code>BD</code>.</p>
-        <fieldset class="days">
-          <legend>Dagen</legend>
-          <div id="day-boxes"></div>
-        </fieldset>
-        <div class="grid3">
-          <label>Vanaf
-            <input type="time" name="start" required>
-          </label>
-          <label>Tot
-            <input type="time" name="eind" required>
-          </label>
-          <label>Melden vanaf (min vertraging)
-            <input type="number" name="drempel" min="1" max="60" required>
-          </label>
-        </div>
-        <label class="check"><input type="checkbox" name="actief"> Actief</label>
-        <div class="form-actions">
-          <button type="button" class="btn" id="btn-cancel">Annuleren</button>
-          <button type="submit" class="btn primary">Opslaan</button>
-        </div>
-      </form>
-
-      <div class="card subtle">
-        <h2>Back-up</h2>
-        <p class="muted">Exporteer je trajecten als JSON (ook bruikbaar voor de latere achtergrond-checker), of importeer ze op een ander apparaat.</p>
-        <div class="row">
-          <button class="btn" id="btn-export">Exporteren</button>
-          <label class="btn file">Importeren<input type="file" id="file-import" accept="application/json,.json" hidden></label>
-          <button class="btn danger-ghost" id="btn-reset">Standaard herstellen</button>
+      <div class="section">
+        <h2 class="section-title">Back-up</h2>
+        <div class="group">
+          <button class="row-item action" id="btn-export"><span><b>Exporteren</b><small>Trajecten opslaan als JSON-bestand</small></span><svg viewBox="0 0 24 24"><use href="#i-chevron"/></svg></button>
+          <label class="row-item action"><span><b>Importeren</b><small>Trajecten laden uit een JSON-bestand</small></span><svg viewBox="0 0 24 24"><use href="#i-chevron"/></svg><input type="file" id="file-import" accept="application/json,.json" hidden></label>
+          <button class="row-item action danger" id="btn-reset"><span><b>Standaard herstellen</b><small>Tilburg ⇄ Breda, ma–vr 07:30–19:00</small></span><svg viewBox="0 0 24 24"><use href="#i-chevron"/></svg></button>
         </div>
       </div>
     </section>
 
     <!-- INSTELLINGEN -->
     <section id="tab-instellingen" class="panel">
-      <h1>Instellingen</h1>
-      <form id="settings-form" class="card form" autocomplete="off">
-        <label>NS API-sleutel (Reisinformatie API / Ns-App)
-          <div class="row">
-            <input type="password" name="apiKey" placeholder="Primary key uit het NS API-portaal" spellcheck="false">
-            <button type="button" class="btn" id="btn-showkey">Toon</button>
+      <div class="page-head"><div><h1>Instellingen</h1><p class="sub">Alles wordt alleen in deze browser bewaard</p></div></div>
+      <form id="settings-form" autocomplete="off">
+        <div class="section">
+          <h2 class="section-title">NS API-sleutel</h2>
+          <div class="group pad">
+            <label class="field"><span>Primary key (product Ns-App)</span>
+              <div class="input-row">
+                <input type="password" name="apiKey" placeholder="Plak hier je sleutel" spellcheck="false">
+                <button type="button" class="btn ghost" id="btn-showkey">Toon</button>
+              </div>
+            </label>
+            <p class="hint">Maak een account op <a href="https://apiportal.ns.nl/" target="_blank" rel="noopener">apiportal.ns.nl</a>, abonneer je op <b>Ns-App</b> en kopieer de primary key.</p>
+            <div class="test-row">
+              <button type="button" class="btn secondary" id="btn-test">Sleutel testen</button>
+              <span id="settings-msg" class="test-msg"></span>
+            </div>
           </div>
-        </label>
-        <p class="hint">Aanvragen: maak een account op <a href="https://apiportal.ns.nl/" target="_blank" rel="noopener">apiportal.ns.nl</a>, abonneer je op het product <strong>Ns-App</strong> en kopieer de primary key. De sleutel blijft alleen in deze browser.</p>
-        <div class="grid2">
-          <label>Automatisch vernieuwen
-            <select name="refreshSec">
-              <option value="0">Uit</option>
-              <option value="60">Elke minuut</option>
-              <option value="120">Elke 2 minuten</option>
-              <option value="300">Elke 5 minuten</option>
-            </select>
-          </label>
-          <label>Aantal treinen per traject
-            <select name="aantal">
-              <option>3</option><option>4</option><option>5</option><option>6</option>
-            </select>
-          </label>
         </div>
-        <label class="check"><input type="checkbox" name="notify"> Browsermelding bij vertraging, uitval of storing (zolang de app open staat)</label>
-        <div class="form-actions">
-          <button type="button" class="btn" id="btn-test">Sleutel testen</button>
-          <button type="submit" class="btn primary">Opslaan</button>
+        <div class="section">
+          <h2 class="section-title">Weergave</h2>
+          <div class="group">
+            <label class="row-item"><span><b>Automatisch vernieuwen</b></span>
+              <select name="refreshSec">
+                <option value="0">Uit</option>
+                <option value="60">Elke minuut</option>
+                <option value="120">Elke 2 minuten</option>
+                <option value="300">Elke 5 minuten</option>
+              </select>
+            </label>
+            <label class="row-item"><span><b>Treinen per traject</b></span>
+              <select name="aantal"><option>3</option><option>4</option><option>5</option><option>6</option></select>
+            </label>
+          </div>
         </div>
-        <p id="settings-msg" class="hint"></p>
+        <div class="section">
+          <h2 class="section-title">Meldingen</h2>
+          <div class="group">
+            <label class="row-item"><span><b>Melding bij vertraging, uitval of storing</b><small>Werkt zolang de app open staat</small></span>
+              <input type="checkbox" name="notify" class="switch">
+            </label>
+          </div>
+        </div>
+        <button type="submit" class="btn primary block">Opslaan</button>
       </form>
-      <p class="muted small">Data: NS Reisinformatie API &amp; Disruptions API. Deze app is niet van NS.</p>
+      <p class="footnote">Reisinformatie: NS Reisinformatie API &amp; Disruptions API. OV-tool is een persoonlijk project en niet van NS.</p>
     </section>
   </main>
 
-  <div id="toast" class="toast hidden"></div>
+  <nav class="bottomnav" aria-label="Hoofdmenu">
+    <button class="nav-btn" data-tab="live"><svg viewBox="0 0 24 24"><use href="#i-train"/></svg><span>Reizen</span></button>
+    <button class="nav-btn" data-tab="trajecten"><svg viewBox="0 0 24 24"><use href="#i-route"/></svg><span>Trajecten</span></button>
+    <button class="nav-btn" data-tab="instellingen"><svg viewBox="0 0 24 24"><use href="#i-cog"/></svg><span>Instellingen</span></button>
+  </nav>
+
+  <!-- Traject bewerken -->
+  <div id="sheet" class="sheet-backdrop hidden">
+    <form id="traject-form" class="sheet" autocomplete="off" role="dialog" aria-modal="true" aria-labelledby="form-title">
+      <div class="sheet-head">
+        <h2 id="form-title">Nieuw traject</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Sluiten"><svg viewBox="0 0 24 24"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="sheet-body">
+        <input type="hidden" name="id">
+        <div class="planner">
+          <div class="planner-line"><span class="pd"></span><span class="pl"></span><span class="pd end"></span></div>
+          <div class="planner-fields">
+            <label class="pfield"><span>Van</span><input name="van" list="stations" placeholder="Vertrekstation" required></label>
+            <label class="pfield"><span>Naar</span><input name="naar" list="stations" placeholder="Aankomststation" required></label>
+          </div>
+          <button type="button" class="swap-btn" id="btn-swap" aria-label="Van en naar wisselen"><svg viewBox="0 0 24 24"><use href="#i-swap"/></svg></button>
+        </div>
+        <datalist id="stations"></datalist>
+        <p class="hint">Typ een stationsnaam of NS-code (bijv. <code>TB</code>, <code>BD</code>). Met een API-sleutel verschijnen suggesties.</p>
+
+        <label class="field"><span>Naam <small>(optioneel)</small></span><input name="naam" placeholder="bijv. Naar Avans"></label>
+
+        <div class="field"><span>Dagen</span><div id="day-boxes" class="daypicker"></div></div>
+
+        <div class="grid3">
+          <label class="field"><span>Vanaf</span><input type="time" name="start" required></label>
+          <label class="field"><span>Tot</span><input type="time" name="eind" required></label>
+          <label class="field"><span>Melden vanaf</span><div class="suffix"><input type="number" name="drempel" min="1" max="60" required><em>min</em></div></label>
+        </div>
+
+        <label class="row-item flat"><span><b>Actief</b><small>Traject tonen en bewaken</small></span><input type="checkbox" name="actief" class="switch"></label>
+      </div>
+      <div class="sheet-foot">
+        <button type="button" class="btn ghost" data-close>Annuleren</button>
+        <button type="submit" class="btn primary">Opslaan</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status"><span id="toast-text"></span><button id="toast-action" class="hidden"></button></div>
+
+  <!-- Iconen -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-train" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3h10a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm-3 8h16M8 21l2-4m6 4-2-4M8.5 14h.01M15.5 14h.01"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.5 5H16a3.5 3.5 0 0 1 0 7H8a3.5 3.5 0 0 0 0 7h7.5"/></g></symbol>
+    <symbol id="i-cog" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></g></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 11a8 8 0 0 0-14.3-4.9L4 8m0-5v5h5M4 13a8 8 0 0 0 14.3 4.9L20 16m0 5v-5h-5"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></g></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 2.4 17.5A2 2 0 0 0 4.1 20.5h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></g></symbol>
+    <symbol id="i-tools" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4 2.5-2.5Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></g></symbol>
+    <symbol id="i-transfer" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 8h13l-3-3m6 11H7l3 3"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+  </svg>
   <script src="app.js"></script>
 </body>
 </html>

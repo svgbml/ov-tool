@@ -28,13 +28,6 @@ function toNsDateTime(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${oh}:${om}`;
 }
 
-function toast(msg, ms = 2600) {
-  const el = $('#toast');
-  el.textContent = msg;
-  el.classList.remove('hidden');
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.classList.add('hidden'), ms);
-}
 
 /* ---------- state ---------- */
 function defaultTrajecten() {
@@ -159,6 +152,13 @@ function analyseTrip(trip, drempel) {
     msgs: [...msgs], products, transfers, pTrack, aTrack,
     duur: trip.actualDurationInMinutes ?? trip.plannedDurationInMinutes,
     direction: first.direction,
+    legs: legs.map((l) => ({
+      product: [l.product?.shortCategoryName || l.product?.displayName, l.product?.number].filter(Boolean).join(' '),
+      direction: l.direction,
+      cancelled: !!l.cancelled,
+      from: { naam: l.origin?.name || '', p: l.origin?.plannedDateTime, a: l.origin?.actualDateTime, track: l.origin?.actualTrack || l.origin?.plannedTrack },
+      to: { naam: l.destination?.name || '', p: l.destination?.plannedDateTime, a: l.destination?.actualDateTime, track: l.destination?.actualTrack || l.destination?.plannedTrack },
+    })),
   };
 }
 
@@ -225,40 +225,89 @@ function fmtDay(d) {
   return d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'short' });
 }
 
+/* ---------- UI helpers ---------- */
+const icon = (id) => `<svg viewBox="0 0 24 24"><use href="#i-${id}"/></svg>`;
+const fmtDur = (m) => (m || m === 0 ? `${Math.floor(m / 60)}:${pad(m % 60)}` : '');
+const delayTag = (n) => (n > 0 ? `<span class="delay">+${n}</span>` : '');
+const defaultNaam = (t) => `${t.van.naam} → ${t.naar.naam}`;
+
+function toast(msg, action, ms = 3200) {
+  const el = $('#toast');
+  $('#toast-text').textContent = msg;
+  const btn = $('#toast-action');
+  btn.classList.toggle('hidden', !action);
+  btn.onclick = null;
+  if (action) {
+    btn.textContent = action.label;
+    btn.onclick = () => { action.fn(); el.classList.add('hidden'); };
+    ms = 6000;
+  }
+  el.classList.remove('hidden');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.add('hidden'), ms);
+}
+
 /* ---------- tabs ---------- */
 function showTab(name) {
-  $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+  $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
   $$('.panel').forEach((p) => p.classList.toggle('active', p.id === `tab-${name}`));
+  window.scrollTo({ top: 0 });
   if (name === 'live') refreshLive();
   if (name === 'trajecten') renderTrajecten();
   if (name === 'instellingen') fillSettings();
 }
-$$('.tab').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+$$('.nav-btn').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-goto]');
   if (a) { e.preventDefault(); showTab(a.dataset.goto); }
 });
 
-/* ---------- LIVE ---------- */
+/* ---------- REIZEN ---------- */
 const notified = new Set();
 let refreshing = false;
+
+const STATUS_CHIP = {
+  ok: ['ok', 'Rijdt volgens plan'],
+  vertraging: ['warn', 'Vertraging'],
+  storing: ['bad', 'Storing'],
+  uitval: ['bad', 'Uitval'],
+};
+
+function cardShell(t, chip, body, notices = '') {
+  const naam = t.naam && t.naam !== defaultNaam(t) ? `${esc(t.naam)} · ` : '';
+  return `<article class="tcard" data-tid="${esc(t.id)}">
+    <div class="tcard-top">
+      <div class="tcard-head">
+        <div class="route"><span>${esc(t.van.naam)}</span>${icon('arrow')}<span>${esc(t.naar.naam)}</span></div>
+        <span class="chip ${chip[0]}">${esc(chip[1])}</span>
+      </div>
+      <div class="tcard-meta">${naam}${esc(dagenTekst(t.dagen))} · ${esc(t.start)}–${esc(t.eind)} · melding vanaf ${esc(t.drempel)} min</div>
+    </div>
+    ${notices}
+    <div class="tcard-body">${body}</div>
+  </article>`;
+}
+const skeleton = () => '<div class="skel"><span></span><span></span></div>'.repeat(3);
 
 async function refreshLive() {
   const list = $('#live-list');
   $('#nokey-banner').classList.toggle('hidden', !!state.apiKey);
   const actieve = state.trajecten.filter((t) => t.actief);
   if (!actieve.length) {
-    list.innerHTML = '<div class="card empty">Geen actieve trajecten. Voeg er een toe onder <a href="#" data-goto="trajecten">Trajecten</a>.</div>';
+    list.innerHTML = `<div class="notice info">${icon('info')}<div><strong>Geen actieve trajecten</strong><p>Voeg er een toe of zet er een aan bij <a href="#" data-goto="trajecten">Trajecten</a>.</p></div></div>`;
     return;
   }
   if (!state.apiKey) {
-    list.innerHTML = actieve.map((t) => cardShell(t, 'fout', 'Geen sleutel', '<p class="empty">Stel eerst een NS API-sleutel in.</p>')).join('');
+    list.innerHTML = actieve.map((t) => cardShell(t, ['neutral', 'Geen sleutel'], '<p class="empty">Live informatie verschijnt zodra je een API-sleutel hebt ingesteld.</p>')).join('');
     return;
   }
   if (refreshing) return;
   refreshing = true;
-  $('#btn-refresh').disabled = true;
-  list.innerHTML = actieve.map((t) => cardShell(t, 'laden', 'Laden…', '<p class="empty">Gegevens ophalen…</p>')).join('');
+  const rb = $('#btn-refresh');
+  rb.classList.add('spin'); rb.disabled = true;
+  if (!list.querySelector('.tcard .trips')) {
+    list.innerHTML = actieve.map((t) => cardShell(t, ['neutral', 'Laden…'], skeleton())).join('');
+  }
 
   const stationCache = new Map();
   const disruptionsFor = (code) => {
@@ -266,34 +315,25 @@ async function refreshLive() {
     return stationCache.get(code);
   };
 
-  await Promise.all(actieve.map(async (t) => {
-    const el = $(`[data-tid="${t.id}"]`);
-    try {
-      const html = await renderTrajectCard(t, disruptionsFor);
-      if (el) el.outerHTML = html;
-    } catch (err) {
-      if (el) el.outerHTML = cardShell(t, 'fout', 'Fout', `<p class="error">${esc(err.message)}</p>`);
-    }
+  const cards = await Promise.all(actieve.map(async (t) => {
+    try { return await renderTrajectCard(t, disruptionsFor); }
+    catch (err) { return cardShell(t, ['bad', 'Fout'], `<p class="error">${esc(err.message)}</p>`); }
   }));
+  // open uitgeklapte ritten behouden
+  const open = new Set($$('.trip details[open]').map((d) => d.closest('.trip').dataset.key));
+  list.innerHTML = cards.join('');
+  $$('.trip').forEach((li) => { if (open.has(li.dataset.key)) li.querySelector('details').open = true; });
 
   $('#last-update').textContent = `Bijgewerkt om ${hhmm(new Date())}`;
-  $('#btn-refresh').disabled = false;
+  rb.classList.remove('spin'); rb.disabled = false;
   refreshing = false;
-}
-
-function cardShell(t, pillClass, pillText, body) {
-  return `<article class="card tcard" data-tid="${esc(t.id)}">
-    <div class="tcard-head"><h2>${esc(t.naam)}</h2><span class="pill ${pillClass}">${esc(pillText)}</span></div>
-    <div class="tcard-sub">${esc(t.van.naam)} (${esc(t.van.code)}) → ${esc(t.naar.naam)} (${esc(t.naar.code)}) · ${esc(dagenTekst(t.dagen))} ${esc(t.start)}–${esc(t.eind)} · melden ≥ ${esc(t.drempel)} min</div>
-    ${body}
-  </article>`;
 }
 
 async function renderTrajectCard(t, disruptionsFor) {
   const now = new Date();
   const actiefNu = inWindow(t, now);
   const vanaf = actiefNu ? now : nextWindowStart(t, now);
-  if (!vanaf) return cardShell(t, 'buiten', 'Geen dagen', '<p class="empty">Er zijn geen dagen geselecteerd voor dit traject.</p>');
+  if (!vanaf) return cardShell(t, ['neutral', 'Geen dagen'], '<p class="empty">Er zijn geen dagen geselecteerd voor dit traject.</p>');
   const eind = windowEndFor(t, vanaf);
 
   const [trips, dVan, dNaar] = await Promise.all([getTrips(t, vanaf), disruptionsFor(t.van.code), disruptionsFor(t.naar.code)]);
@@ -303,17 +343,14 @@ async function renderTrajectCard(t, disruptionsFor) {
     .filter((a) => a.pDep && parseDate(a.pDep) <= eind && parseDate(a.aDep) >= new Date(now.getTime() - 60000))
     .slice(0, Number(state.settings.aantal) || 4);
 
-  // storingen: ontdubbelen en splitsen in "op traject" en "rond station"
   const seen = new Set();
   const all = [...dVan, ...dNaar].filter((d) => d && d.isActive !== false && !seen.has(d.id) && seen.add(d.id));
   const onRoute = all.filter((d) => disruptionOnRoute(d, t)).map(disruptionInfo);
   const other = all.filter((d) => !disruptionOnRoute(d, t)).map(disruptionInfo);
 
-  // status bepalen op basis van de eerstvolgende trein + storingen
   let sev = analysed[0]?.sev || 'ok';
   if (onRoute.some((d) => d.type !== 'MAINTENANCE')) sev = worst(sev, 'storing');
 
-  // alternatief: eerste goede trein na een probleemtrein
   let altKey = null;
   if (analysed[0] && analysed[0].sev !== 'ok') {
     const alt = analysed.slice(1).find((a) => a.sev === 'ok' || (a.sev === 'vertraging' && a.delay < analysed[0].delay));
@@ -322,51 +359,77 @@ async function renderTrajectCard(t, disruptionsFor) {
 
   if (actiefNu) maybeNotify(t, analysed, onRoute, altKey);
 
-  const pill = actiefNu
-    ? { ok: ['ok', 'Geen problemen'], vertraging: ['vertraging', 'Vertraging'], storing: ['storing', 'Storing'], uitval: ['uitval', 'Uitval'] }[sev]
-    : ['buiten', `Volgende: ${fmtDay(vanaf)} ${hhmm(vanaf)}`];
-
-  const intro = actiefNu ? '' : `<p class="empty">Buiten het venster. Eerste treinen ${esc(fmtDay(vanaf))} vanaf ${esc(t.start)}:</p>`;
+  const chip = actiefNu ? STATUS_CHIP[sev] : ['neutral', `${fmtDay(vanaf)} ${hhmm(vanaf)}`];
+  const intro = actiefNu ? '' : `<p class="tcard-intro">Buiten je venster · eerste treinen ${esc(fmtDay(vanaf))} vanaf ${esc(t.start)}</p>`;
   const tripsHtml = analysed.length
     ? `<ul class="trips">${analysed.map((a) => tripRow(a, a.key === altKey)).join('')}</ul>`
     : '<p class="empty">Geen treinen meer binnen het venster.</p>';
+  const otherHtml = other.length
+    ? `<details class="other"><summary>${other.length} andere melding${other.length > 1 ? 'en' : ''} rond ${esc(t.van.naam)} / ${esc(t.naar.naam)}</summary>${other.map(disruptionRow).join('')}</details>`
+    : '';
 
-  const disHtml = (onRoute.length ? `<div class="disruptions">${onRoute.map(disruptionRow).join('')}</div>` : '')
-    + (other.length ? `<details class="other"><summary>${other.length} andere melding(en) rond ${esc(t.van.naam)}/${esc(t.naar.naam)}</summary>${other.map(disruptionRow).join('')}</details>` : '');
+  return cardShell(t, chip, intro + tripsHtml + otherHtml, onRoute.map(disruptionRow).join(''));
+}
 
-  return cardShell(t, pill[0], pill[1], intro + tripsHtml + disHtml);
+function legTime(p, a) {
+  if (!p) return '';
+  return `${hhmm(parseDate(p))}${delayTag(diffMin(p, a))}`;
 }
 
 function tripRow(a, isAlt) {
   const dep = parseDate(a.pDep);
-  const act = parseDate(a.aDep);
-  const late = a.depDelay > 0;
-  const time = a.cancelled
-    ? `<span class="late"><s>${hhmm(dep)}</s></span>`
-    : late ? `<s>${hhmm(dep)}</s><span class="late">${hhmm(act)}</span>` : hhmm(dep);
-  const arr = a.aArr ? hhmm(parseDate(a.aArr)) : '';
-  const track = a.aTrack ? `spoor ${esc(a.aTrack)}${a.pTrack && a.aTrack !== a.pTrack ? ' (gewijzigd)' : ''}` : '';
-  const meta = [arr && `aankomst ${arr}`, a.duur && `${a.duur} min`, a.transfers ? `${a.transfers}× overstap` : 'direct', track].filter(Boolean).join(' · ');
-  const badge = a.cancelled ? 'Rijdt niet'
-    : a.sev === 'ok' ? (a.delay > 0 ? `+${a.delay} min` : 'Op tijd')
-    : a.sev === 'vertraging' ? `+${a.delay} min`
-    : (STATUS_LABEL[a.status] || 'Storing');
-  const msg = a.msgs.length && a.sev !== 'ok' ? `<div class="msg">${esc(a.msgs.slice(0, 2).join(' · '))}</div>` : '';
-  return `<li class="trip sev-${a.sev}${isAlt ? ' alt' : ''}">
-    <div class="time">${time}</div>
-    <div class="info"><div class="line">${isAlt ? '<span class="alt-tag">Alternatief</span>' : ''}${esc(a.products.join(' + ') || 'Trein')}${a.direction ? ` richting ${esc(a.direction)}` : ''}</div><div class="meta">${meta}</div></div>
-    <div class="badge ${a.sev}">${esc(badge)}</div>
+  const arr = a.pArr ? parseDate(a.pArr) : null;
+  const chips = [];
+  if (isAlt) chips.push('<span class="chip ok sm">Alternatief</span>');
+  if (a.cancelled) chips.push('<span class="chip bad sm">Rijdt niet</span>');
+  else if (a.sev === 'uitval' || a.sev === 'storing') chips.push(`<span class="chip bad sm">${esc(STATUS_LABEL[a.status] || 'Storing')}</span>`);
+
+  const trackChanged = a.pTrack && a.aTrack && a.aTrack !== a.pTrack;
+  const trackCls = a.aTrack ? (trackChanged ? ' changed' : '') : ' none';
+  const msg = a.msgs.length && a.sev !== 'ok'
+    ? `<div class="trip-msg">${icon('warn')}<span>${esc(a.msgs.slice(0, 2).join(' · '))}</span></div>` : '';
+
+  const timeline = a.legs.map((l) => `
+    <div class="leg${l.cancelled ? ' cancelled' : ''}">
+      <div class="stop"><span class="st-time">${legTime(l.from.p, l.from.a)}</span><span class="st-dot"></span><span class="st-name">${esc(l.from.naam)}</span><span class="st-track">${l.from.track ? `spoor ${esc(l.from.track)}` : ''}</span></div>
+      <div class="ride"><span></span><span class="st-line"></span><span class="ride-info">${esc(l.product || 'Trein')}${l.direction ? ` richting ${esc(l.direction)}` : ''}${l.cancelled ? ' · rijdt niet' : ''}</span></div>
+      <div class="stop"><span class="st-time">${legTime(l.to.p, l.to.a)}</span><span class="st-dot"></span><span class="st-name">${esc(l.to.naam)}</span><span class="st-track">${l.to.track ? `spoor ${esc(l.to.track)}` : ''}</span></div>
+    </div>`).join('<div class="transfer-gap">Overstappen</div>');
+
+  return `<li class="trip sev-${a.sev}${isAlt ? ' alt' : ''}" data-key="${esc(a.key)}">
+    <details>
+      <summary>
+        <div>
+          <div class="times${a.cancelled ? ' cancelled' : ''}">
+            <span class="t">${hhmm(dep)}</span>${a.cancelled ? '' : delayTag(a.depDelay)}
+            <span class="arrow">→</span>
+            <span class="t">${arr ? hhmm(arr) : ''}</span>${a.cancelled ? '' : delayTag(a.arrDelay)}
+          </div>
+          <div class="trip-sub">
+            ${icon('clock')}<span>${fmtDur(a.duur)}</span><span class="sep"></span>
+            ${icon('transfer')}<span>${a.transfers ? `${a.transfers}×` : 'direct'}</span><span class="sep"></span>
+            <span class="product">${esc(a.products.join(' · ') || 'Trein')}</span>
+            ${chips.join('')}
+          </div>
+        </div>
+        <div class="track${trackCls}"><small>Spoor</small><b>${esc(a.aTrack || '–')}</b></div>
+        <svg class="chev" viewBox="0 0 24 24"><use href="#i-chevron"/></svg>
+      </summary>
+      ${a.legs.length ? `<div class="timeline">${timeline}</div>` : ''}
+    </details>
     ${msg}
   </li>`;
 }
 
 function disruptionRow(d) {
+  const maint = d.type === 'MAINTENANCE';
+  const label = maint ? 'Werkzaamheden' : d.type === 'CALAMITY' ? 'Calamiteit' : 'Storing';
   const meta = [d.duur, d.extra].filter(Boolean).join(' · ');
-  return `<div class="disruption${d.type === 'MAINTENANCE' ? ' maintenance' : ''}">
-    <strong>${d.type === 'MAINTENANCE' ? 'Werkzaamheden: ' : d.type === 'CALAMITY' ? 'Calamiteit: ' : 'Storing: '}${esc(d.title)}</strong>
-    ${d.detail ? `<div>${esc(d.detail)}</div>` : ''}
-    ${meta ? `<div class="meta">${esc(meta)}</div>` : ''}
-  </div>`;
+  return `<div class="notice ${maint ? 'warn' : 'bad'}">${icon(maint ? 'tools' : 'warn')}<div>
+    <strong>${label}: ${esc(d.title)}</strong>
+    ${d.detail ? `<p>${esc(d.detail)}</p>` : ''}
+    ${meta ? `<p class="meta">${esc(meta)}</p>` : ''}
+  </div></div>`;
 }
 
 /* ---------- meldingen ---------- */
@@ -405,41 +468,49 @@ async function notify(title, body, tag) {
 function renderTrajecten() {
   const el = $('#traject-list');
   if (!state.trajecten.length) {
-    el.innerHTML = '<p class="muted">Nog geen trajecten.</p>';
+    el.innerHTML = `<div class="notice info">${icon('info')}<div><strong>Nog geen trajecten</strong><p>Maak er een aan met "Nieuw traject".</p></div></div>`;
     return;
   }
   el.innerHTML = state.trajecten.map((t) => `
-    <div class="titem${t.actief ? '' : ' off'}">
+    <article class="titem${t.actief ? '' : ' off'}">
       <div>
-        <div class="name">${esc(t.naam)}</div>
-        <div class="meta">${esc(t.van.naam)} (${esc(t.van.code)}) → ${esc(t.naar.naam)} (${esc(t.naar.code)}) · ${esc(dagenTekst(t.dagen))} ${esc(t.start)}–${esc(t.eind)} · ≥ ${esc(t.drempel)} min</div>
+        ${t.naam && t.naam !== defaultNaam(t) ? `<div class="titem-name">${esc(t.naam)}</div>` : ''}
+        <div class="titem-route">
+          <div class="mini-line"><span class="d"></span><span class="l"></span><span class="d"></span></div>
+          <div class="titem-stations"><span>${esc(t.van.naam)}<small>${esc(t.van.code)}</small></span><span>${esc(t.naar.naam)}<small>${esc(t.naar.code)}</small></span></div>
+        </div>
+        <div class="titem-info">
+          <div class="daychips">${DAG_VOLGORDE.map((d) => `<span class="${t.dagen.includes(d) ? 'on' : ''}">${DAGEN[d]}</span>`).join('')}</div>
+          <span>${esc(t.start)}–${esc(t.eind)}</span>
+          <span>melding vanaf ${esc(t.drempel)} min</span>
+        </div>
       </div>
-      <div class="actions">
-        <button class="btn small" data-act="toggle" data-id="${esc(t.id)}">${t.actief ? 'Pauzeren' : 'Activeren'}</button>
-        <button class="btn small" data-act="reverse" data-id="${esc(t.id)}" title="Retourtraject maken">⇄</button>
-        <button class="btn small" data-act="edit" data-id="${esc(t.id)}">Bewerken</button>
-        <button class="btn small danger-ghost" data-act="delete" data-id="${esc(t.id)}">Verwijderen</button>
+      <div class="titem-actions">
+        <input type="checkbox" class="switch" data-act="toggle" data-id="${esc(t.id)}" ${t.actief ? 'checked' : ''} aria-label="Actief" title="${t.actief ? 'Actief' : 'Gepauzeerd'}">
+        <button class="icon-btn" data-act="reverse" data-id="${esc(t.id)}" title="Retourtraject maken" aria-label="Retourtraject maken">${icon('swap')}</button>
+        <button class="icon-btn" data-act="edit" data-id="${esc(t.id)}" title="Bewerken" aria-label="Bewerken">${icon('edit')}</button>
+        <button class="icon-btn danger" data-act="delete" data-id="${esc(t.id)}" title="Verwijderen" aria-label="Verwijderen">${icon('trash')}</button>
       </div>
-    </div>`).join('');
+    </article>`).join('');
 }
 
 $('#traject-list').addEventListener('click', (e) => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
-  const t = state.trajecten.find((x) => x.id === b.dataset.id);
+  const idx = state.trajecten.findIndex((x) => x.id === b.dataset.id);
+  const t = state.trajecten[idx];
   if (!t) return;
-  if (b.dataset.act === 'toggle') { t.actief = !t.actief; saveState(); renderTrajecten(); }
+  if (b.dataset.act === 'toggle') { t.actief = b.checked; saveState(); renderTrajecten(); }
   if (b.dataset.act === 'edit') openForm(t);
-  if (b.dataset.act === 'reverse') {
-    openForm({ ...t, id: '', naam: `${t.naar.naam} → ${t.van.naam}`, van: t.naar, naar: t.van });
-  }
+  if (b.dataset.act === 'reverse') openForm({ ...t, id: '', naam: '', van: t.naar, naar: t.van });
   if (b.dataset.act === 'delete') {
-    state.trajecten = state.trajecten.filter((x) => x.id !== t.id);
+    state.trajecten.splice(idx, 1);
     saveState(); renderTrajecten();
-    toast(`"${t.naam}" verwijderd`);
+    toast(`${t.naam} verwijderd`, { label: 'Ongedaan maken', fn: () => { state.trajecten.splice(idx, 0, t); saveState(); renderTrajecten(); } });
   }
 });
 
+const sheet = $('#sheet');
 const form = $('#traject-form');
 $('#day-boxes').innerHTML = DAG_VOLGORDE.map((d) => `<label class="day"><input type="checkbox" name="dag" value="${d}"><span>${DAGEN[d]}</span></label>`).join('');
 
@@ -459,7 +530,7 @@ function openForm(t) {
   const v = t || { naam: '', van: null, naar: null, dagen: [1, 2, 3, 4, 5], start: '07:30', eind: '19:00', drempel: 5, actief: true };
   $('#form-title').textContent = isNew ? 'Nieuw traject' : 'Traject bewerken';
   form.id.value = isNew ? '' : v.id;
-  form.naam.value = v.naam;
+  form.naam.value = v.naam && v.van && v.naam !== defaultNaam(v) ? v.naam : '';
   form.van.value = stationLabel(v.van);
   form.naar.value = stationLabel(v.naar);
   $$('input[name=dag]', form).forEach((c) => { c.checked = v.dagen.includes(Number(c.value)); });
@@ -467,12 +538,19 @@ function openForm(t) {
   form.eind.value = v.eind;
   form.drempel.value = v.drempel;
   form.actief.checked = v.actief;
-  form.classList.remove('hidden');
-  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  form.naam.focus({ preventScroll: true });
+  sheet.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => (isNew ? form.van : form.naam).focus(), 50);
+}
+function closeForm() {
+  sheet.classList.add('hidden');
+  document.body.style.overflow = '';
 }
 $('#btn-new').addEventListener('click', () => openForm(null));
-$('#btn-cancel').addEventListener('click', () => form.classList.add('hidden'));
+$$('[data-close]', sheet).forEach((b) => b.addEventListener('click', closeForm));
+sheet.addEventListener('click', (e) => { if (e.target === sheet) closeForm(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.classList.contains('hidden')) closeForm(); });
+$('#btn-swap').addEventListener('click', () => { [form.van.value, form.naar.value] = [form.naar.value, form.van.value]; });
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -490,21 +568,16 @@ form.addEventListener('submit', (e) => {
     drempel: Math.max(1, Number(form.drempel.value) || 5),
     actief: form.actief.checked,
   };
-  if (form.id.value) {
-    Object.assign(state.trajecten.find((x) => x.id === form.id.value), data);
-  } else {
-    state.trajecten.push({ id: uid(), ...data });
-  }
+  if (form.id.value) Object.assign(state.trajecten.find((x) => x.id === form.id.value), data);
+  else state.trajecten.push({ id: uid(), ...data });
   saveState();
-  form.classList.add('hidden');
+  closeForm();
   renderTrajecten();
   toast('Traject opgeslagen');
 });
 
 // stationssuggesties
-let stationOptions = [
-  { code: 'TB', naam: 'Tilburg' }, { code: 'BD', naam: 'Breda' },
-];
+let stationOptions = [{ code: 'TB', naam: 'Tilburg' }, { code: 'BD', naam: 'Breda' }];
 function fillDatalist() {
   $('#stations').innerHTML = stationOptions.map((s) => `<option value="${esc(stationLabel(s))}"></option>`).join('');
 }
@@ -549,24 +622,30 @@ $('#file-import').addEventListener('change', async (e) => {
   e.target.value = '';
 });
 $('#btn-reset').addEventListener('click', () => {
+  const prev = state.trajecten;
   state.trajecten = defaultTrajecten();
   saveState(); renderTrajecten();
-  toast('Standaardtrajecten Tilburg ⇄ Breda hersteld');
+  toast('Standaardtrajecten hersteld', { label: 'Ongedaan maken', fn: () => { state.trajecten = prev; saveState(); renderTrajecten(); } });
 });
 
 /* ---------- INSTELLINGEN ---------- */
 const sform = $('#settings-form');
+function setTestMsg(text, cls = '') {
+  const m = $('#settings-msg');
+  m.textContent = text;
+  m.className = `test-msg ${cls}`;
+}
 function fillSettings() {
   sform.apiKey.value = state.apiKey;
   sform.refreshSec.value = String(state.settings.refreshSec);
   sform.aantal.value = String(state.settings.aantal);
   sform.notify.checked = !!state.settings.notify;
-  $('#settings-msg').textContent = '';
+  setTestMsg('');
 }
 $('#btn-showkey').addEventListener('click', (e) => {
   const show = sform.apiKey.type === 'password';
   sform.apiKey.type = show ? 'text' : 'password';
-  e.target.textContent = show ? 'Verberg' : 'Toon';
+  e.currentTarget.textContent = show ? 'Verberg' : 'Toon';
 });
 sform.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -583,15 +662,14 @@ sform.addEventListener('submit', async (e) => {
   toast('Instellingen opgeslagen');
 });
 $('#btn-test').addEventListener('click', async () => {
-  const msg = $('#settings-msg');
   const prev = state.apiKey;
   state.apiKey = sform.apiKey.value.trim();
-  msg.textContent = 'Testen…';
+  setTestMsg('Testen…');
   try {
     const r = await searchStations('Tilburg');
-    msg.textContent = r.length ? `✓ Sleutel werkt (gevonden: ${r[0].naam}). Vergeet niet op te slaan.` : '✓ Verbinding werkt, maar geen stations gevonden.';
+    setTestMsg(r.length ? '✓ Sleutel werkt' : '✓ Verbinding werkt', 'ok');
   } catch (err) {
-    msg.textContent = `✗ ${err.message}`;
+    setTestMsg(`✗ ${err.message}`, 'bad');
   } finally {
     state.apiKey = prev;
   }
@@ -599,16 +677,13 @@ $('#btn-test').addEventListener('click', async () => {
 
 /* ---------- auto-refresh ---------- */
 let timer;
+const liveVisible = () => document.visibilityState === 'visible' && $('#tab-live').classList.contains('active');
 function scheduleRefresh() {
   clearInterval(timer);
   const s = Number(state.settings.refreshSec);
-  if (s > 0) timer = setInterval(() => {
-    if (document.visibilityState === 'visible' && $('#tab-live').classList.contains('active')) refreshLive();
-  }, s * 1000);
+  if (s > 0) timer = setInterval(() => { if (liveVisible()) refreshLive(); }, s * 1000);
 }
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && $('#tab-live').classList.contains('active')) refreshLive();
-});
+document.addEventListener('visibilitychange', () => { if (liveVisible()) refreshLive(); });
 $('#btn-refresh').addEventListener('click', refreshLive);
 
 /* ---------- start ---------- */
@@ -617,4 +692,3 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 scheduleRefresh();
 showTab(state.apiKey ? 'live' : 'instellingen');
-if (!state.apiKey) refreshLive();
