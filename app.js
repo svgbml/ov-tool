@@ -38,7 +38,7 @@ function defaultTrajecten() {
   ];
 }
 function defaultState() {
-  return { apiKey: '', settings: { refreshSec: 120, aantal: 4, notify: false }, trajecten: defaultTrajecten() };
+  return { apiKey: '', settings: { refreshSec: 120, aantal: 4, notify: false, theme: 'spoor', mode: 'auto' }, trajecten: defaultTrajecten() };
 }
 
 let memoryFallback = null;
@@ -674,6 +674,58 @@ $('#btn-test').addEventListener('click', async () => {
     state.apiKey = prev;
   }
 });
+
+
+/* ---------- UITERLIJK ---------- */
+const THEMES = [
+  { id: 'spoor', naam: 'Spoor', desc: 'Geel & blauw' },
+  { id: 'minimal', naam: 'Minimal', desc: 'Strak zwart-wit' },
+  { id: 'oceaan', naam: 'Oceaan', desc: 'Teal verloop' },
+  { id: 'vertrekbord', naam: 'Vertrekbord', desc: 'Stationsbord' },
+  { id: 'bloesem', naam: 'Bloesem', desc: 'Zacht & rond' },
+];
+const darkMq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+const resolvedMode = () => (state.settings.mode === 'auto' ? (darkMq?.matches ? 'dark' : 'light') : state.settings.mode);
+function applyTheme() {
+  const root = document.documentElement;
+  root.dataset.theme = THEMES.some((t) => t.id === state.settings.theme) ? state.settings.theme : 'spoor';
+  root.dataset.mode = resolvedMode();
+  const bar = getComputedStyle(root).getPropertyValue('--appbar-bg').trim();
+  const solid = (bar.match(/#[0-9a-f]{3,8}/i) || [bar])[0];
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', solid);
+  renderThemePicker();
+}
+function renderThemePicker() {
+  const mode = resolvedMode();
+  $$('[data-mode-opt]').forEach((b) => {
+    const on = b.dataset.modeOpt === state.settings.mode;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', on);
+  });
+  $('#theme-picker').innerHTML = THEMES.map((t) => `
+    <button type="button" class="theme-opt${t.id === state.settings.theme ? ' active' : ''}" data-theme-opt="${t.id}" role="radio" aria-checked="${t.id === state.settings.theme}">
+      <div class="theme-prev" data-theme="${t.id}" data-mode="${mode}">
+        <div class="tp-bar"><i></i><i></i></div>
+        <div class="tp-card"><span class="tp-time">08:10<em>+3</em></span><span class="tp-track">5</span></div>
+        <div class="tp-btn"></div>
+      </div>
+      <span class="theme-name">${t.naam}<small>${t.desc}</small></span>
+    </button>`).join('');
+}
+$('#mode-picker').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-mode-opt]');
+  if (!b) return;
+  state.settings.mode = b.dataset.modeOpt;
+  saveState(); applyTheme();
+});
+$('#theme-picker').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-theme-opt]');
+  if (!b) return;
+  state.settings.theme = b.dataset.themeOpt;
+  saveState(); applyTheme();
+});
+darkMq?.addEventListener?.('change', () => { if (state.settings.mode === 'auto') applyTheme(); });
+applyTheme();
 
 /* ---------- auto-refresh ---------- */
 let timer;
