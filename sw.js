@@ -1,5 +1,5 @@
 // Service worker: app-shell offline beschikbaar; NS-API-verzoeken gaan altijd naar het netwerk.
-const CACHE = 'ovtool-v3';
+const CACHE = 'ovtool-v4';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

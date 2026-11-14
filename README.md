@@ -12,7 +12,7 @@ actuele vertrektijden, vertraging, uitval, storingen/werkzaamheden en een **alte
 - **Storingen** op het traject (Disruptions API), overige meldingen rond de stations ingeklapt.
 - **Browsermeldingen** bij vertraging ≥ drempel, uitval of storing (zolang de app open staat), inclusief alternatief.
 - **Export/import** van trajecten als JSON.
-- **Uiterlijk**: 5 thema's (Spoor, Minimal, Oceaan, Vertrekbord, Bloesem), elk in licht en donker, of automatisch volgens het systeem.
+- **Uiterlijk**: 5 thema's (Minimal (standaard), Spoor, Oceaan, Vertrekbord, Bloesem), elk in licht en donker, of automatisch volgens het systeem.
 - Alles lokaal in de browser (localStorage); er is geen server.
 
 ## Installeren

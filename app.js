@@ -38,7 +38,7 @@ function defaultTrajecten() {
   ];
 }
 function defaultState() {
-  return { apiKey: '', settings: { refreshSec: 120, aantal: 4, notify: false, theme: 'spoor', mode: 'auto' }, trajecten: defaultTrajecten() };
+  return { apiKey: '', settings: { refreshSec: 120, aantal: 4, notify: false, theme: 'minimal', mode: 'auto' }, trajecten: defaultTrajecten() };
 }
 
 let memoryFallback = null;
@@ -678,8 +678,8 @@ $('#btn-test').addEventListener('click', async () => {
 
 /* ---------- UITERLIJK ---------- */
 const THEMES = [
+  { id: 'minimal', naam: 'Minimal', desc: 'Strak zwart-wit (standaard)' },
   { id: 'spoor', naam: 'Spoor', desc: 'Geel & blauw' },
-  { id: 'minimal', naam: 'Minimal', desc: 'Strak zwart-wit' },
   { id: 'oceaan', naam: 'Oceaan', desc: 'Teal verloop' },
   { id: 'vertrekbord', naam: 'Vertrekbord', desc: 'Stationsbord' },
   { id: 'bloesem', naam: 'Bloesem', desc: 'Zacht & rond' },
@@ -688,7 +688,7 @@ const darkMq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : 
 const resolvedMode = () => (state.settings.mode === 'auto' ? (darkMq?.matches ? 'dark' : 'light') : state.settings.mode);
 function applyTheme() {
   const root = document.documentElement;
-  root.dataset.theme = THEMES.some((t) => t.id === state.settings.theme) ? state.settings.theme : 'spoor';
+  root.dataset.theme = THEMES.some((t) => t.id === state.settings.theme) ? state.settings.theme : 'minimal';
   root.dataset.mode = resolvedMode();
   const bar = getComputedStyle(root).getPropertyValue('--appbar-bg').trim();
   const solid = (bar.match(/#[0-9a-f]{3,8}/i) || [bar])[0];

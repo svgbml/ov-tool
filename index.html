@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="nl" data-theme="spoor" data-mode="light">
+<html lang="nl" data-theme="minimal" data-mode="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>OV-tool – storingen & vertragingen</title>
   <meta name="description" content="Houd je vaste treintrajecten in de gaten: vertragingen, uitval, storingen en een alternatief.">
-  <meta name="theme-color" content="#ffc917">
+  <meta name="theme-color" content="#ffffff">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <script>
     // thema direct toepassen (voorkomt flits)
     (function () {
-      var t = 'spoor', m = 'auto';
+      var t = 'minimal', m = 'auto';
       try { var s = JSON.parse(localStorage.getItem('ovtool.v1') || '{}').settings || {}; t = s.theme || t; m = s.mode || m; } catch (e) {}
       if (m === 'auto') m = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.dataset.theme = t;
